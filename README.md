@@ -1,6 +1,6 @@
 # JavaScript People Counter
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Demo - Probar Contador](https://img.shields.io/badge/Demo-Probar_Contador-brightgreen)](https://soyunomas.github.io/javascript-people-counter/) 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Demo - Probar Contador](https://img.shields.io/badge/Demo-Probar_Contador-brightgreen)](https://soyunomas.github.io/javascript-people-counter/)[![Demo - Probar Contador_para móvil](https://img.shields.io/badge/Demo-Probar_Contador-brightgreen)](https://soyunomas.github.io/javascript-people-counter/index_movil.html) 
 
 Una aplicación web para contar personas que cruzan una línea virtual usando la webcam y TensorFlow.js, con opciones avanzadas de configuración y layout adaptable. 🚶↔️
 
@@ -17,6 +17,8 @@ Este proyecto utiliza la cámara web del navegador y el modelo COCO-SSD de Tenso
 Puedes probar la demo en vivo aquí:
 
 *   **[Demo - Probar Contador](https://soyunomas.github.io/javascript-people-counter/)**
+
+*   **[Demo - Probar Contador para móvil](https://soyunomas.github.io/javascript-people-counter/)**
 
 ## ✨ Características Principales
 
