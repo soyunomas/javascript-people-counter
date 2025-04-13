@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contador Avanzado de Personas (Layout Dividido)</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <!-- Optional: Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body { background-color: #f8f9fa; padding-bottom: 1rem; }
+        #webcam { /* Oculto */ }
+        #canvas-container {
+            position: relative; width: 100%;
+            margin-bottom: 0.5rem;
+            border: 2px solid #0d6efd; background-color: #fff; overflow: hidden;
+            aspect-ratio: 4 / 3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* Por defecto ocupa el ancho de su columna */
+        }
+        #canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+        /* --- Loader Styles --- */
+        #loading-indicator { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 10; background-color: rgba(255, 255, 255, 0.8); padding: 1.5rem; border-radius: 0.5rem; }
+        #loading-indicator .spinner-border { width: 3rem; height: 3rem; }
+        #loading-status-text { margin-top: 0.8rem; font-weight: 500; color: #495057; }
+        /* --- Fin Loader Styles --- */
+        .track-id { position: absolute; background-color: rgba(220, 53, 69, 0.8); color: white; padding: 1px 4px; font-size: 10px; border-radius: 3px; white-space: nowrap; pointer-events: none; font-weight: bold; }
+        #direction-indicator { font-size: 0.9em; color: #6c757d; }
+        #status, #track-count-display { min-height: 1.2em; font-size: 0.85em; }
+        #invert-button.active { background-color: #198754; border-color: #198754; }
+        #pause-button.paused { background-color: #ffc107; border-color: #ffc107; color: black; }
+        @keyframes flash { 0% { background-color: #d1e7dd; } 100% { background-color: transparent; } }
+        .flash-success { animation: flash 0.5s ease-out; }
+        .form-range { cursor: pointer; }
+        .popover-trigger { cursor: help; }
+        .input-group-text { min-width: 55px; justify-content: center; font-size: 0.8em; }
+        .settings-section label.col-form-label-sm { font-size: 0.9em; }
+        .form-switch .form-check-label { font-size: 0.9em; }
+        h1.h3 { font-size: 1.5rem; }
+        .right-panel { max-height: 90vh; overflow-y: auto; padding: 1rem; }
+        .right-panel .alert { font-size: 1.1rem; padding: 0.6rem; }
+        .right-panel .alert .fw-bold { font-size: 1.1rem; }
+        .right-panel .btn-sm { padding: 0.2rem 0.5rem; font-size: 0.8rem;}
+        .right-panel .h6 { font-size: 1rem; }
+        .right-panel .form-check-label { font-size: 0.85em;}
+        .right-panel .small, .right-panel .form-label { font-size: 0.85em;}
+
+        /* --- Media Query para móviles --- */
+        @media (max-width: 767.98px) { /* Debajo del breakpoint 'md' de Bootstrap */
+            #canvas-container {
+                max-width: 60%; /* <-- AJUSTA ESTE VALOR (ej. 50%, 60%, etc.) */
+                margin-left: auto; /* Centrar horizontalmente */
+                margin-right: auto; /* Centrar horizontalmente */
+                /* La altura se ajustará automáticamente por aspect-ratio */
+            }
+            .right-panel {
+                 max-height: none; /* Quitar límite de altura en móvil si se desea */
+                 overflow-y: visible; /* Quitar scroll si no hay límite */
+            }
+             h1.h3 { font-size: 1.3rem; } /* Opcional: reducir título */
+        }
+        /* --- Fin Media Query --- */
+
+    </style>
+</head>
+<body class="pt-3">
+
+    <div class="container-fluid">
+         <h1 class="mb-3 h3 text-center">Contador Avanzado de Personas</h1>
+        <div class="row g-3">
+            <!-- Columna Izquierda: Canvas -->
+            <div class="col-lg-6 col-md-6 d-flex flex-column align-items-center">
+                 <video id="webcam" autoplay muted playsinline class="d-none"></video>
+                 <div id="canvas-container">
+                    <div id="loading-indicator"> <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div> <p id="loading-status-text" class="mb-0">Inicializando...</p> </div>
+                    <canvas id="canvas"></canvas>
+                 </div>
+                 <div class="text-center text-muted small w-100 mt-1"> <span id="track-count-display" class="me-3">Pistas activas: 0</span> <span id="status"></span> </div>
+            </div>
+
+            <!-- Columna Derecha: Controles y Ajustes -->
+            <div class="col-lg-6 col-md-6">
+                <div class="right-panel">
+                    <!-- Controles -->
+                    <div id="controls" class="d-flex flex-column align-items-center gap-2 mb-3 w-100">
+                        <div id="counter-display" class="alert alert-success text-center p-2 w-100 mb-1"> Entradas: <span id="entradas" class="fw-bold">0</span> | Salidas: <span id="salidas" class="fw-bold">0</span> </div>
+                        <div id="direction-indicator" class="text-center w-100"> <span id="direction-primary" class="text-danger"></span> | <span id="direction-secondary" class="text-success"></span> <small class="d-block text-muted">(Cruzando la línea roja)</small> </div>
+                        <div id="line-slider-container" class="d-flex align-items-center gap-2 w-100 px-1"> <label for="line-position-slider" class="form-label mb-0 small">Pos. Línea:</label> <input type="range" class="form-range flex-grow-1" id="line-position-slider" min="5" max="95" value="50"> <span id="line-position-value" class="badge bg-secondary" style="min-width: 40px;">50%</span> </div>
+                        <div class="form-check form-switch align-self-center my-1"> <input class="form-check-input" type="checkbox" role="switch" id="line-orientation-switch"> <label class="form-check-label" for="line-orientation-switch">Línea Horizontal</label> </div>
+                        <div id="personas-dentro-display" class="alert alert-info text-center p-2 w-100 mb-2"> Personas Dentro: <span id="personas-dentro" class="fw-bold">0</span> </div>
+                        <div class="d-flex gap-2 justify-content-center flex-wrap w-100"> <button id="reset-button" class="btn btn-danger btn-sm">Resetear</button> <button id="invert-button" class="btn btn-warning btn-sm">Invertir Sentido</button> <button id="pause-button" class="btn btn-secondary btn-sm"> <i class="bi bi-pause-fill"></i> Pausar </button> </div>
+                    </div>
+                    <!-- Ajustes -->
+                    <div id="settings" class="p-3 border rounded bg-light mb-3 w-100 settings-section">
+                        <h5 class="mb-3 text-center h6">Ajustes de Detección</h5>
+                        <div class="mb-3 row gx-2 align-items-center"> <label for="score-threshold-slider" class="col-sm-4 col-form-label col-form-label-sm">Confianza Mín.:</label> <div class="col-sm-8"><div class="input-group input-group-sm"> <input type="range" class="form-range" id="score-threshold-slider" min="0.1" max="0.9" step="0.05" value="0.5"> <span class="input-group-text" id="score-threshold-value">50%</span> <button class="btn btn-outline-secondary popover-trigger btn-sm" type="button" data-bs-toggle="popover" title="Umbral de Confianza" data-bs-content="Ignora detecciones si la confianza es menor. Filtra detecciones dudosas."><i class="bi bi-question-circle"></i></button> </div></div> </div>
+                        <div class="mb-3 row gx-2 align-items-center"> <label for="frame-skip-slider" class="col-sm-4 col-form-label col-form-label-sm">Procesar cada:</label> <div class="col-sm-8"><div class="input-group input-group-sm"> <input type="range" class="form-range" id="frame-skip-slider" min="1" max="10" step="1" value="1"> <span class="input-group-text" id="frame-skip-value">1 fr.</span> <button class="btn btn-outline-secondary popover-trigger btn-sm" type="button" data-bs-toggle="popover" title="Salto de Frames" data-bs-content="Procesa sólo cada N frames. Reduce uso de CPU a costa de reactividad."><i class="bi bi-question-circle"></i></button> </div></div> </div>
+                        <div class="mb-2 row gx-2 align-items-center"> <label for="cooldown-slider" class="col-sm-4 col-form-label col-form-label-sm">Cooldown Cruce:</label> <div class="col-sm-8"><div class="input-group input-group-sm"> <input type="range" class="form-range" id="cooldown-slider" min="0" max="5000" step="250" value="1000"> <span class="input-group-text" id="cooldown-value">1000ms</span> <button class="btn btn-outline-secondary popover-trigger btn-sm" type="button" data-bs-toggle="popover" title="Cooldown de Cruce" data-bs-content="Tiempo mínimo (ms) antes de volver a contar a la misma persona. Evita conteo múltiple. 0 deshabilita."><i class="bi bi-question-circle"></i></button> </div></div> </div>
+                    </div>
+                </div> <!-- Fin .right-panel -->
+            </div> <!-- Fin Columna Derecha -->
+        </div> <!-- Fin .row -->
+    </div> <!-- Fin .container-fluid -->
+
+
+    <!-- JS Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+
+    <script>
+        // --- DOM Elements ---
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const statusElement = document.getElementById('status');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const loadingStatusText = document.getElementById('loading-status-text');
+        const entradasElement = document.getElementById('entradas');
+        const salidasElement = document.getElementById('salidas');
+        const personasDentroElement = document.getElementById('personas-dentro');
+        const resetButton = document.getElementById('reset-button');
+        const invertButton = document.getElementById('invert-button');
+        const pauseButton = document.getElementById('pause-button');
+        const canvasContainer = document.getElementById('canvas-container');
+        const lineSlider = document.getElementById('line-position-slider');
+        const lineValueSpan = document.getElementById('line-position-value');
+        const lineOrientationSwitch = document.getElementById('line-orientation-switch');
+        const directionPrimarySpan = document.getElementById('direction-primary');
+        const directionSecondarySpan = document.getElementById('direction-secondary');
+        const trackCountDisplay = document.getElementById('track-count-display');
+        const scoreThresholdSlider = document.getElementById('score-threshold-slider');
+        const scoreThresholdValueSpan = document.getElementById('score-threshold-value');
+        const frameSkipSlider = document.getElementById('frame-skip-slider');
+        const frameSkipValueSpan = document.getElementById('frame-skip-value');
+        const cooldownSlider = document.getElementById('cooldown-slider');
+        const cooldownValueSpan = document.getElementById('cooldown-value');
+
+        // --- State Variables ---
+        let model = null; let lineaImaginariaX = null; let lineaImaginariaY = null;
+        let isLineHorizontal = false; let animationFrameId = null; let isInverted = false;
+        let isPaused = false; let frameCounter = 0;
+
+        // --- Tracking State ---
+        let trackedPersons = new Map(); let nextTrackId = 0; let entradas = 0; let salidas = 0;
+
+        // --- Configurable Parameters ---
+        let scoreThreshold = 0.5; let frameSkipCount = 1; let cooldownMillis = 1000;
+
+        // --- Tracking Parameters ---
+        const MAX_DISTANCE = 100; const MAX_MISSED_FRAMES = 10;
+
+        // --- Loader Functions ---
+        function showLoading(message) { loadingStatusText.textContent = message; loadingIndicator.classList.remove('d-none'); statusElement.textContent = ''; }
+        function hideLoading() { loadingIndicator.classList.add('d-none'); }
+
+        // --- Helper Functions ---
+        function calculateCentroid(bbox) { return { x: bbox[0] + bbox[2] / 2, y: bbox[1] + bbox[3] / 2 }; }
+        function calculateDistance(p1, p2) { return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2)); }
+        function getSide(centroid) { if (isLineHorizontal) { if (lineaImaginariaY === null) return null; return centroid.y < lineaImaginariaY ? 'top' : 'bottom'; } else { if (lineaImaginariaX === null) return null; return centroid.x < lineaImaginariaX ? 'left' : 'right'; } }
+        function calculateLinePosition() { const sliderValue = parseInt(lineSlider.value); if (isLineHorizontal) { if(canvasElement.height) { lineaImaginariaY = (sliderValue / 100) * canvasElement.height; lineaImaginariaX = null; } } else { if(canvasElement.width) { lineaImaginariaX = (sliderValue / 100) * canvasElement.width; lineaImaginariaY = null; } } lineValueSpan.textContent = `${sliderValue}%`; }
+
+        // --- Core Functions ---
+        async function setupWebcam() {
+            showLoading('Solicitando webcam...');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                videoElement.srcObject = stream;
+                return new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        console.log("Webcam iniciada."); showLoading('Webcam lista, ajustando...');
+                        const videoWidth = videoElement.videoWidth; const videoHeight = videoElement.videoHeight;
+                        canvasElement.width = videoWidth; canvasElement.height = videoHeight; canvasContainer.style.aspectRatio = `${videoWidth} / ${videoHeight}`;
+                        isLineHorizontal = lineOrientationSwitch.checked; calculateLinePosition();
+                        console.log(`Dimensiones: ${videoWidth}x${videoHeight}`); resolve();
+                    };
+                });
+            } catch (err) { console.error("Error webcam:", err); statusElement.textContent = 'Error webcam.'; hideLoading(); alert("Error webcam."); throw err; }
+        }
+        async function loadModel() {
+             showLoading('Cargando modelo TF.js...');
+             try { model = await cocoSsd.load(); console.log("Modelo cargado."); }
+             catch (err) { console.error("Error modelo:", err); statusElement.textContent = 'Error modelo.'; hideLoading(); alert("Error modelo."); throw err; }
+        }
+        function updateCountersUI() { entradasElement.textContent = entradas; salidasElement.textContent = salidas; const personasDentro = Math.max(0, entradas - salidas); personasDentroElement.textContent = personasDentro; }
+        function updateDirectionIndicatorUI() { let primaryDir, secondaryDir, primaryClass, secondaryClass; if (isLineHorizontal) { primaryDir = "↑"; secondaryDir = "↓"; if (isInverted) { primaryDir += " Entrada"; secondaryDir += " Salida"; primaryClass = "text-success fw-bold"; secondaryClass = "text-danger"; } else { primaryDir += " Salida"; secondaryDir += " Entrada"; primaryClass = "text-danger"; secondaryClass = "text-success fw-bold"; } } else { primaryDir = "←"; secondaryDir = "→"; if (isInverted) { primaryDir += " Entrada"; secondaryDir += " Salida"; primaryClass = "text-success fw-bold"; secondaryClass = "text-danger"; } else { primaryDir += " Salida"; secondaryDir += " Entrada"; primaryClass = "text-danger"; secondaryClass = "text-success fw-bold"; } } directionPrimarySpan.textContent = primaryDir; directionPrimarySpan.className = primaryClass; directionSecondarySpan.textContent = secondaryDir; directionSecondarySpan.className = secondaryClass; invertButton.classList.toggle('active', isInverted); invertButton.textContent = isInverted ? 'Sentido Invertido' : 'Invertir Sentido'; }
+        function applyFlashFeedback() { const counterDisplay = document.getElementById('counter-display'); counterDisplay.classList.add('flash-success'); counterDisplay.style.backgroundColor = ''; setTimeout(() => { counterDisplay.classList.remove('flash-success'); }, 500); }
+        function updateTracking(predictions) { const currentDetections = []; predictions.forEach(p => { if (p.class === 'person' && p.score >= scoreThreshold) { currentDetections.push({ bbox: p.bbox, centroid: calculateCentroid(p.bbox), score: p.score }); } }); const matchedIndices = new Set(); const updatedTrackIds = new Set(); let crossedThisFrame = false; trackedPersons.forEach((trackData, trackId) => { let bestMatchIndex = -1; let minDistance = MAX_DISTANCE; for (let i = 0; i < currentDetections.length; i++) { if (!matchedIndices.has(i)) { const dist = calculateDistance(trackData.centroid, currentDetections[i].centroid); if (dist < minDistance) { minDistance = dist; bestMatchIndex = i; } } } if (bestMatchIndex !== -1) { const matchedDetection = currentDetections[bestMatchIndex]; const previousSide = trackData.side; const currentSide = getSide(matchedDetection.centroid); trackData.bbox = matchedDetection.bbox; trackData.centroid = matchedDetection.centroid; trackData.missedFrames = 0; trackData.updated = true; trackData.side = currentSide; updatedTrackIds.add(trackId); matchedIndices.add(bestMatchIndex); if (previousSide && currentSide && previousSide !== currentSide) { const now = Date.now(); if (!trackData.lastCrossTime || (now - trackData.lastCrossTime > cooldownMillis)) { let isEntrada = null; if (isLineHorizontal) { if (previousSide === 'top' && currentSide === 'bottom') { isEntrada = !isInverted; } else if (previousSide === 'bottom' && currentSide === 'top') { isEntrada = isInverted; } } else { if (previousSide === 'left' && currentSide === 'right') { isEntrada = !isInverted; } else if (previousSide === 'right' && currentSide === 'left') { isEntrada = isInverted; } } if (isEntrada !== null) { if (isEntrada) { entradas++; } else { salidas++; } console.log(`Cruce (ID:${trackId}) -> ${isEntrada ? 'Entrada' : 'Salida'} (${isInverted ? 'INV' : 'NRM'})`); crossedThisFrame = true; trackData.lastCrossTime = now; } } else { console.log(`Cruce ID:${trackId} ignorado (cooldown)`); } } } else { trackData.missedFrames++; trackData.updated = false; } }); trackedPersons.forEach((trackData, trackId) => { if (trackData.missedFrames > MAX_MISSED_FRAMES) { console.log(`Eliminando pista ${trackId}`); trackedPersons.delete(trackId); } }); for (let i = 0; i < currentDetections.length; i++) { if (!matchedIndices.has(i)) { const newDetection = currentDetections[i]; const newTrackId = nextTrackId++; console.log(`Nueva pista ID: ${newTrackId}`); trackedPersons.set(newTrackId, { id: newTrackId, bbox: newDetection.bbox, centroid: newDetection.centroid, missedFrames: 0, side: getSide(newDetection.centroid), updated: true, lastCrossTime: null }); } } if (crossedThisFrame) { updateCountersUI(); applyFlashFeedback(); } }
+        function drawFrameAndDetections() { if (!canvasCtx || !canvasElement.width || !canvasElement.height) return; try { canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height); canvasCtx.beginPath(); canvasCtx.strokeStyle = 'rgba(220, 53, 69, 0.9)'; canvasCtx.lineWidth = 4; canvasCtx.setLineDash([5, 5]); if (isLineHorizontal && lineaImaginariaY !== null) { canvasCtx.moveTo(0, lineaImaginariaY); canvasCtx.lineTo(canvasElement.width, lineaImaginariaY); } else if (!isLineHorizontal && lineaImaginariaX !== null) { canvasCtx.moveTo(lineaImaginariaX, 0); canvasCtx.lineTo(lineaImaginariaX, canvasElement.height); } canvasCtx.stroke(); canvasCtx.setLineDash([]); canvasCtx.closePath(); const oldTrackIds = canvasContainer.querySelectorAll('.track-id'); oldTrackIds.forEach(el => el.remove()); trackedPersons.forEach((trackData, trackId) => { if(trackData.updated) { const [x, y, width, height] = trackData.bbox; canvasCtx.strokeStyle = 'rgba(25, 135, 84, 0.9)'; canvasCtx.lineWidth = 2; canvasCtx.strokeRect(x, y, width, height); const idElement = document.createElement('div'); idElement.innerText = `ID: ${trackId}`; idElement.classList.add('track-id'); const displayX = Math.max(2, Math.min(x + 2, canvasElement.width - 35)); const displayY = Math.max(2, Math.min(y + 2, canvasElement.height - 15)); idElement.style.left = `${displayX}px`; idElement.style.top = `${displayY}px`; canvasContainer.appendChild(idElement); } }); trackCountDisplay.textContent = `Pistas activas: ${trackedPersons.size}`; } catch(e) { console.error("Error dibujando frame:", e); } }
+        async function detectAndTrackLoop() { if (isPaused || !model || videoElement.paused || videoElement.ended || !canvasElement.width) { if (!isPaused && videoElement.readyState >= 3 && canvasCtx) { try { canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height); } catch(e) {} } animationFrameId = requestAnimationFrame(detectAndTrackLoop); return; } frameCounter++; try { if (frameCounter % frameSkipCount !== 0) { if (canvasCtx) canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height); drawFrameAndDetections(); } else { const predictions = await model.detect(videoElement); updateTracking(predictions); drawFrameAndDetections(); } } catch(e) { console.error("Error en bucle:", e); statusElement.textContent = 'Error en procesamiento.'; } animationFrameId = requestAnimationFrame(detectAndTrackLoop); }
+
+        // --- Event Listeners ---
+        resetButton.addEventListener('click', () => { console.log('Reseteando...'); entradas = 0; salidas = 0; trackedPersons.clear(); nextTrackId = 0; updateCountersUI(); });
+        invertButton.addEventListener('click', () => { isInverted = !isInverted; console.log('Sentido invertido:', isInverted); updateDirectionIndicatorUI(); });
+        pauseButton.addEventListener('click', () => { isPaused = !isPaused; if (isPaused) { pauseButton.innerHTML = '<i class="bi bi-play-fill"></i> Reanudar'; pauseButton.classList.add('paused'); statusElement.textContent = 'Pausado.'; console.log("Pausado"); if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; } } else { pauseButton.innerHTML = '<i class="bi bi-pause-fill"></i> Pausar'; pauseButton.classList.remove('paused'); statusElement.textContent = 'Detectando...'; console.log("Reanudado"); if (animationFrameId === null) { detectAndTrackLoop(); } } });
+        lineSlider.addEventListener('input', (event) => { calculateLinePosition(); });
+        lineOrientationSwitch.addEventListener('change', (event) => { isLineHorizontal = event.target.checked; console.log(`Orientación -> ${isLineHorizontal ? 'Horizontal' : 'Vertical'}`); calculateLinePosition(); updateDirectionIndicatorUI(); trackedPersons.clear(); nextTrackId = 0; console.log("Pistas reseteadas."); });
+        scoreThresholdSlider.addEventListener('input', (e) => { scoreThreshold = parseFloat(e.target.value); scoreThresholdValueSpan.textContent = `${Math.round(scoreThreshold * 100)}%`; });
+        frameSkipSlider.addEventListener('input', (e) => { frameSkipCount = parseInt(e.target.value); frameSkipValueSpan.textContent = `${frameSkipCount} fr.`; });
+        cooldownSlider.addEventListener('input', (e) => { cooldownMillis = parseInt(e.target.value); cooldownValueSpan.textContent = `${cooldownMillis}ms`; });
+
+        // --- Inicialización ---
+        function initializeUI() { scoreThresholdSlider.value = scoreThreshold; scoreThresholdValueSpan.textContent = `${Math.round(scoreThreshold * 100)}%`; frameSkipSlider.value = frameSkipCount; frameSkipValueSpan.textContent = `${frameSkipCount} fr.`; cooldownSlider.value = cooldownMillis; cooldownValueSpan.textContent = `${cooldownMillis}ms`; lineValueSpan.textContent = `${lineSlider.value}%`; lineOrientationSwitch.checked = isLineHorizontal; const popoverTriggerList = document.querySelectorAll('[data-bs-toggle="popover"]'); [...popoverTriggerList].map(popoverTriggerEl => new bootstrap.Popover(popoverTriggerEl, { trigger: 'focus hover' })); updateCountersUI(); updateDirectionIndicatorUI(); }
+        async function main() { initializeUI(); showLoading('Inicializando...'); try { await loadModel(); await setupWebcam(); hideLoading(); statusElement.textContent = '¡Listo! Esperando movimiento...'; detectAndTrackLoop(); } catch (error) { console.error("Fallo inicialización:", error); hideLoading(); statusElement.textContent = 'Error al iniciar.'; } }
+        window.onload = main;
+        window.onunload = () => { if (animationFrameId) cancelAnimationFrame(animationFrameId); if (videoElement.srcObject) { videoElement.srcObject.getTracks().forEach(track => track.stop()); } };
+    </script>
+</body>
+</html>
