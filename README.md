@@ -18,6 +18,7 @@ Puedes probar la demo en vivo aquí:
 
 *   **[Demo - Probar Contador](https://soyunomas.github.io/javascript-people-counter/)**
 *   **[Demo - Probar Contador para móvil](https://soyunomas.github.io/javascript-people-counter/index_movil.html)**
+*   **[Demo - Probar Contador mascotas (POC)](https://soyunomas.github.io/javascript-people-counter/index_mascotas.html)**
 
 ## ✨ Características Principales
 
