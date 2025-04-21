@@ -129,7 +129,7 @@ Este script Python actúa como un servidor WebSocket simple diseñado para recib
     source venv/bin/activate
     ```
     (Tu prompt de terminal debería cambiar, indicando que estás dentro de `venv`).
-5.  **Instala las Dependencias:** Solo se necesita la librería `websockets`.
+5.  **Instala las Dependencias:** Solo se necesita la librería `websockets` **Atención la versión que me funciona a mi es la 12.0** Verifica la versión instalada y aumentala hasta que veas que funciona.
     ```bash
     pip install websockets==12.0
     ```
