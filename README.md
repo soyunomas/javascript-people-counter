@@ -19,6 +19,14 @@ Ofrece una interfaz con el vídeo/canvas a la izquierda y los controles/ajustes 
 Puedes probar la demo en vivo aquí:
 
 *   **[Demo - Probar Contador](https://soyunomas.github.io/javascript-people-counter/)**
+
+## ⚠️ Nota Importante sobre HTTPS en GitHub Pages
+
+El enlace de prueba en GitHub Pages usa HTTPS. Los navegadores modernos bloquean las conexiones desde HTTPS a servidores WebSocket locales inseguros (WS) por seguridad (Mixed Content). Para probar la funcionalidad de enviar imágenes al servidor, puedes hacer dos cosas:
+
+1. Abrir el archivo index.html como archivo en el navegador directamente sin usar servidor web. Podrás tener el servidor de python en otra máquina sin problemas.
+2. Ejecuta el servidor Python y abre `index.html` usando un servidor HTTP que puede estar en otro equipo (ej: `python3 -m http.server 8000` y accede desde `http://localhost:8000` o `http://IP_MAQUINA:8000`).
+
 *   **[Demo - Probar Contador para móvil (versión antigua)](https://soyunomas.github.io/javascript-people-counter/index_movil.html)**
 *   **[Demo - Probar Contador mascotas Versión antigua (POC)](https://soyunomas.github.io/javascript-people-counter/index_mascotas.html)**
 
