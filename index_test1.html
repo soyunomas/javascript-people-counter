@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Contador Personas Móvil (Optimizado + WakeLock)</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body { background-color: #f0f2f5; padding-bottom: 2rem; overscroll-behavior: none; }
+        
+        /* Contenedor de Video: 100% ancho, sin restricciones artificiales */
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            background-color: #000;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-bottom: 4px solid #0d6efd;
+            min-height: 200px; 
+        }
+
+        /* Canvas: Efecto espejo y ajuste completo */
+        #canvas { 
+            display: block; 
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain; 
+            transform: scaleX(-1); 
+        }
+
+        /* Elementos flotantes sobre el video */
+        #loading-indicator {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 20; background: rgba(255,255,255,0.9); padding: 1rem; border-radius: 10px;
+        }
+        
+        .track-id {
+            position: absolute; 
+            background: rgba(220, 53, 69, 0.85); 
+            color: #fff; 
+            padding: 2px 6px; 
+            font-size: 11px; 
+            border-radius: 4px; 
+            pointer-events: none; 
+            font-weight: 700;
+            z-index: 10;
+        }
+
+        /* Panel de Controles: Más limpio */
+        .controls-panel {
+            background: #fff;
+            border-radius: 15px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            padding: 1.2rem;
+            margin-top: -10px; /* Solapamiento visual leve */
+            position: relative;
+            z-index: 5;
+        }
+
+        /* Tipografía y Estados */
+        .stat-box { text-align: center; padding: 0.5rem; border-radius: 8px; background: #f8f9fa; border: 1px solid #e9ecef; }
+        .stat-val { font-size: 1.5rem; font-weight: 800; display: block; line-height: 1.2; }
+        .stat-label { font-size: 0.75rem; text-transform: uppercase; color: #6c757d; letter-spacing: 0.5px; }
+        
+        /* Feedback visual */
+        @keyframes flash { 0% { background-color: #d1e7dd; } 100% { background-color: #f8f9fa; } }
+        .flash-active { animation: flash 0.4s ease-out; }
+
+        /* Botones táctiles */
+        .btn-touch { padding: 0.6rem; font-size: 0.95rem; }
+    </style>
+</head>
+<body>
+
+    <div class="container-fluid p-0">
+        <!-- 1. VIDEO / CANVAS AREA -->
+        <div id="canvas-container">
+            <video id="webcam" autoplay muted playsinline style="display: none;"></video>
+            <div id="loading-indicator">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="mt-2 small fw-bold text-muted">Iniciando cámara...</div>
+            </div>
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <!-- 2. PANEL DE CONTROL E INFO -->
+        <div class="container mt-0">
+            <div class="controls-panel">
+                
+                <!-- Contadores -->
+                <div class="row g-2 mb-3" id="stats-row">
+                    <div class="col-4">
+                        <div class="stat-box">
+                            <span class="stat-val text-success" id="entradas">0</span>
+                            <span class="stat-label">Entradas</span>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-box">
+                            <span class="stat-val text-primary" id="dentro">0</span>
+                            <span class="stat-label">Dentro</span>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-box">
+                            <span class="stat-val text-danger" id="salidas">0</span>
+                            <span class="stat-label">Salidas</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control Línea -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label small mb-0 fw-bold">Posición Línea</label>
+                        <span id="line-val" class="badge bg-secondary">50%</span>
+                    </div>
+                    <input type="range" class="form-range" id="line-slider" min="5" max="95" value="50">
+                </div>
+
+                <!-- Switches y Botones -->
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="orientation-switch">
+                        <label class="form-check-label small" for="orientation-switch">Horizontal</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="invert-switch">
+                        <label class="form-check-label small" for="invert-switch">Invertir</label>
+                    </div>
+                </div>
+
+                <!-- Botonera Acciones -->
+                <div class="d-grid gap-2 d-flex">
+                    <button id="reset-btn" class="btn btn-outline-danger btn-touch flex-grow-1"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+                    <button id="pause-btn" class="btn btn-secondary btn-touch flex-grow-1" disabled><i class="bi bi-pause-fill"></i> Pausar</button>
+                    <button class="btn btn-light btn-touch border" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSettings"><i class="bi bi-gear-fill"></i></button>
+                </div>
+
+                <!-- Ajustes Avanzados (Colapsados) -->
+                <div class="collapse mt-3" id="advancedSettings">
+                    <div class="card card-body bg-light border-0 p-2">
+                        <div class="row g-2 align-items-center mb-2">
+                            <div class="col-4 small">Confianza:</div>
+                            <div class="col-8"><input type="range" class="form-range" id="conf-slider" min="0.3" max="0.9" step="0.1" value="0.5"></div>
+                        </div>
+                        <div class="row g-2 align-items-center">
+                            <div class="col-4 small">Saltar Frame:</div>
+                            <div class="col-8"><input type="range" class="form-range" id="skip-slider" min="0" max="5" step="1" value="0"></div>
+                        </div>
+                        <div class="text-center mt-2">
+                            <small class="text-muted" id="status-text">Estado: Esperando...</small>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts: TFJS + COCO-SSD + Bootstrap -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // --- Wake Lock (Mantener pantalla encendida) ---
+        let wakeLock = null;
+
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Pantalla bloqueada: ACTIVA');
+                    wakeLock.addEventListener('release', () => {
+                        console.log('Bloqueo de pantalla liberado');
+                    });
+                } catch (err) {
+                    console.error('Error WakeLock:', err.name, err.message);
+                }
+            }
+        }
+
+        // --- DOM Cache ---
+        const UI = {
+            video: document.getElementById('webcam'),
+            canvas: document.getElementById('canvas'),
+            container: document.getElementById('canvas-container'),
+            loading: document.getElementById('loading-indicator'),
+            statsRow: document.getElementById('stats-row'),
+            entradas: document.getElementById('entradas'),
+            salidas: document.getElementById('salidas'),
+            dentro: document.getElementById('dentro'),
+            lineSlider: document.getElementById('line-slider'),
+            lineVal: document.getElementById('line-val'),
+            orientation: document.getElementById('orientation-switch'),
+            invert: document.getElementById('invert-switch'),
+            reset: document.getElementById('reset-btn'),
+            pause: document.getElementById('pause-btn'),
+            status: document.getElementById('status-text'),
+            confSlider: document.getElementById('conf-slider'),
+            skipSlider: document.getElementById('skip-slider')
+        };
+
+        const ctx = UI.canvas.getContext('2d', { alpha: false }); 
+
+        // --- Configuración y Estado ---
+        let state = {
+            model: null,
+            isPlaying: false,
+            isPaused: false,
+            wasPlaying: false,
+            lineX: null,
+            lineY: null,
+            isHorizontal: false,
+            isInverted: false,
+            entradas: 0,
+            salidas: 0,
+            frameCount: 0,
+            skipFrames: 0, 
+            confidence: 0.5,
+            loopId: null,
+            videoW: 0,
+            videoH: 0
+        };
+
+        // Variables de Tracking
+        const tracking = {
+            items: new Map(),
+            nextId: 0,
+            maxDist: 100,
+            maxMissed: 10,
+            cooldown: 1000
+        };
+
+        // --- Inicialización ---
+        async function init() {
+            requestWakeLock(); // <--- Bloquear Pantalla al iniciar
+
+            try {
+                state.model = await cocoSsd.load();
+                console.log("Modelo Cargado");
+                
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                
+                UI.video.srcObject = stream;
+                
+                UI.video.onloadedmetadata = () => {
+                    state.videoW = UI.video.videoWidth;
+                    state.videoH = UI.video.videoHeight;
+                    
+                    UI.canvas.width = state.videoW;
+                    UI.canvas.height = state.videoH;
+                    
+                    UI.video.play();
+                    state.isPlaying = true;
+                    UI.loading.style.display = 'none';
+                    UI.pause.disabled = false;
+                    
+                    calcLine();
+                    detectLoop();
+                    UI.status.textContent = "Detectando...";
+                };
+
+            } catch (err) {
+                console.error(err);
+                UI.loading.innerHTML = `<div class="text-danger fw-bold">Error: ${err.message}</div>`;
+            }
+        }
+
+        // --- Lógica Principal (Loop) ---
+        async function detectLoop() {
+            if (!state.isPlaying || state.isPaused) return;
+
+            state.frameCount++;
+            if (state.frameCount % (state.skipFrames + 1) === 0) {
+                if (state.model) {
+                    const predictions = await state.model.detect(UI.video, 5, state.confidence);
+                    processTracking(predictions);
+                }
+            }
+
+            draw();
+            state.loopId = requestAnimationFrame(detectLoop);
+        }
+
+        // --- Dibujado Eficiente ---
+        function draw() {
+            ctx.save();
+            ctx.scale(-1, 1);
+            ctx.drawImage(UI.video, -state.videoW, 0, state.videoW, state.videoH);
+            ctx.restore();
+
+            // Dibujar Línea
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+            ctx.lineWidth = 3;
+            
+            if (state.isHorizontal && state.lineY !== null) {
+                ctx.moveTo(0, state.lineY);
+                ctx.lineTo(state.videoW, state.lineY);
+            } else if (!state.isHorizontal && state.lineX !== null) {
+                ctx.moveTo(state.lineX, 0);
+                ctx.lineTo(state.lineX, state.videoH);
+            }
+            ctx.stroke();
+
+            // Dibujar Bounding Boxes y IDs
+            document.querySelectorAll('.track-id').forEach(el => el.remove());
+
+            tracking.items.forEach(track => {
+                if (track.missed < 2) {
+                    const [x, y, w, h] = track.bbox;
+                    const visualX = state.videoW - x - w;
+
+                    ctx.strokeStyle = '#0d6efd';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(visualX, y, w, h);
+
+                    // Etiqueta DOM (Corregida con right + %)
+                    const el = document.createElement('div');
+                    el.className = 'track-id';
+                    el.textContent = `ID: ${track.id}`;
+                    
+                    // CORRECCIÓN APLICADA: Usar RIGHT + Coordenada X Original + Porcentaje
+                    el.style.right = `${(x / state.videoW) * 100}%`; 
+                    el.style.top = `${(y / state.videoH) * 100}%`;
+                    
+                    UI.container.appendChild(el);
+                }
+            });
+        }
+
+        // --- Tracking y Conteo ---
+        function processTracking(predictions) {
+            const people = predictions
+                .filter(p => p.class === 'person')
+                .map(p => ({
+                    bbox: p.bbox,
+                    cx: p.bbox[0] + p.bbox[2]/2,
+                    cy: p.bbox[1] + p.bbox[3]/2
+                }));
+
+            const matched = new Set();
+            const now = Date.now();
+
+            tracking.items.forEach((track, id) => {
+                let minDist = tracking.maxDist;
+                let matchIdx = -1;
+
+                people.forEach((p, idx) => {
+                    if (matched.has(idx)) return;
+                    const d = Math.hypot(track.cx - p.cx, track.cy - p.cy);
+                    if (d < minDist) {
+                        minDist = d;
+                        matchIdx = idx;
+                    }
+                });
+
+                if (matchIdx !== -1) {
+                    matched.add(matchIdx);
+                    const p = people[matchIdx];
+                    
+                    const oldSide = track.side;
+                    const newSide = getSide(p.cx, p.cy);
+                    
+                    if (oldSide && newSide && oldSide !== newSide) {
+                        if (now - track.lastCross > tracking.cooldown) {
+                            checkCross(oldSide, newSide);
+                            track.lastCross = now;
+                        }
+                    }
+
+                    track.bbox = p.bbox;
+                    track.cx = p.cx;
+                    track.cy = p.cy;
+                    track.side = newSide;
+                    track.missed = 0;
+                } else {
+                    track.missed++;
+                }
+            });
+
+            tracking.items.forEach((t, id) => {
+                if (t.missed > tracking.maxMissed) tracking.items.delete(id);
+            });
+
+            people.forEach((p, idx) => {
+                if (!matched.has(idx)) {
+                    const newId = ++tracking.nextId;
+                    tracking.items.set(newId, {
+                        id: newId,
+                        bbox: p.bbox,
+                        cx: p.cx,
+                        cy: p.cy,
+                        side: getSide(p.cx, p.cy),
+                        missed: 0,
+                        lastCross: 0
+                    });
+                }
+            });
+        }
+
+        // --- Helpers ---
+        function calcLine() {
+            const val = parseInt(UI.lineSlider.value);
+            UI.lineVal.textContent = `${val}%`;
+            
+            if (state.isHorizontal) {
+                state.lineY = state.videoH - (val / 100) * state.videoH;
+                state.lineX = null;
+            } else {
+                state.lineX = state.videoW - (val / 100) * state.videoW;
+                state.lineY = null;
+            }
+        }
+
+        function getSide(x, y) {
+            if (state.isHorizontal) {
+                if (state.lineY === null) return null;
+                return y < state.lineY ? 'A' : 'B';
+            } else {
+                if (state.lineX === null) return null;
+                return x < state.lineX ? 'A' : 'B';
+            }
+        }
+
+        function checkCross(oldS, newS) {
+            let crossedIn = false;
+            if (oldS === 'A' && newS === 'B') crossedIn = true;
+            else if (oldS === 'B' && newS === 'A') crossedIn = false;
+            else return;
+
+            if (state.isInverted) crossedIn = !crossedIn;
+
+            if (crossedIn) state.entradas++;
+            else state.salidas++;
+
+            updateStats();
+        }
+
+        function updateStats() {
+            UI.entradas.textContent = state.entradas;
+            UI.salidas.textContent = state.salidas;
+            UI.dentro.textContent = Math.max(0, state.entradas - state.salidas);
+            
+            UI.statsRow.classList.remove('flash-active');
+            void UI.statsRow.offsetWidth;
+            UI.statsRow.classList.add('flash-active');
+        }
+
+        // --- Event Listeners ---
+        UI.lineSlider.addEventListener('input', calcLine);
+        
+        UI.orientation.addEventListener('change', e => {
+            state.isHorizontal = e.target.checked;
+            tracking.items.clear();
+            calcLine();
+        });
+        
+        UI.invert.addEventListener('change', e => {
+            state.isInverted = e.target.checked;
+        });
+
+        UI.reset.addEventListener('click', () => {
+            state.entradas = 0;
+            state.salidas = 0;
+            tracking.items.clear();
+            updateStats();
+        });
+
+        UI.pause.addEventListener('click', () => {
+            state.isPaused = !state.isPaused;
+            UI.pause.innerHTML = state.isPaused ? '<i class="bi bi-play-fill"></i> Reanudar' : '<i class="bi bi-pause-fill"></i> Pausar';
+            UI.pause.classList.toggle('btn-warning', state.isPaused);
+            UI.pause.classList.toggle('btn-secondary', !state.isPaused);
+            if (!state.isPaused) detectLoop();
+        });
+
+        UI.confSlider.addEventListener('input', e => state.confidence = parseFloat(e.target.value));
+        UI.skipSlider.addEventListener('input', e => state.skipFrames = parseInt(e.target.value));
+
+        // Optimización Batería + Wake Lock Reset
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                state.wasPlaying = !state.isPaused;
+                state.isPaused = true;
+                // WakeLock se libera solo
+                console.log("Tab background: Paused");
+            } else {
+                requestWakeLock(); // Reactivar Pantalla
+                
+                if (state.wasPlaying) {
+                    state.isPaused = false;
+                    detectLoop();
+                    console.log("Tab active: Resumed");
+                }
+            }
+        });
+
+        // Arranque
+        window.addEventListener('load', init);
+
+    </script>
+</body>
+</html>
