@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Contador Personas Móvil (Optimizado + WakeLock)</title>
+    <title>Contador Personas Móvil (Final)</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
@@ -11,7 +11,6 @@
     <style>
         body { background-color: #f0f2f5; padding-bottom: 2rem; overscroll-behavior: none; }
         
-        /* Contenedor de Video: 100% ancho, sin restricciones artificiales */
         #canvas-container {
             position: relative;
             width: 100%;
@@ -25,7 +24,6 @@
             min-height: 200px; 
         }
 
-        /* Canvas: Efecto espejo y ajuste completo */
         #canvas { 
             display: block; 
             width: 100%; 
@@ -34,7 +32,6 @@
             transform: scaleX(-1); 
         }
 
-        /* Elementos flotantes sobre el video */
         #loading-indicator {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 20; background: rgba(255,255,255,0.9); padding: 1rem; border-radius: 10px;
@@ -50,29 +47,27 @@
             pointer-events: none; 
             font-weight: 700;
             z-index: 10;
+            /* Aseguramos que no se salga del contenedor si está muy al borde */
+            white-space: nowrap;
         }
 
-        /* Panel de Controles: Más limpio */
         .controls-panel {
             background: #fff;
             border-radius: 15px;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
             padding: 1.2rem;
-            margin-top: -10px; /* Solapamiento visual leve */
+            margin-top: -10px; 
             position: relative;
             z-index: 5;
         }
 
-        /* Tipografía y Estados */
         .stat-box { text-align: center; padding: 0.5rem; border-radius: 8px; background: #f8f9fa; border: 1px solid #e9ecef; }
         .stat-val { font-size: 1.5rem; font-weight: 800; display: block; line-height: 1.2; }
         .stat-label { font-size: 0.75rem; text-transform: uppercase; color: #6c757d; letter-spacing: 0.5px; }
         
-        /* Feedback visual */
         @keyframes flash { 0% { background-color: #d1e7dd; } 100% { background-color: #f8f9fa; } }
         .flash-active { animation: flash 0.4s ease-out; }
 
-        /* Botones táctiles */
         .btn-touch { padding: 0.6rem; font-size: 0.95rem; }
     </style>
 </head>
@@ -164,30 +159,24 @@
         </div>
     </div>
 
-    <!-- Scripts: TFJS + COCO-SSD + Bootstrap -->
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        // --- Wake Lock (Mantener pantalla encendida) ---
+        // --- Wake Lock ---
         let wakeLock = null;
-
         async function requestWakeLock() {
             if ('wakeLock' in navigator) {
                 try {
                     wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('Pantalla bloqueada: ACTIVA');
-                    wakeLock.addEventListener('release', () => {
-                        console.log('Bloqueo de pantalla liberado');
-                    });
-                } catch (err) {
-                    console.error('Error WakeLock:', err.name, err.message);
-                }
+                    wakeLock.addEventListener('release', () => console.log('WakeLock liberado'));
+                } catch (err) { console.error('WakeLock error:', err); }
             }
         }
 
-        // --- DOM Cache ---
+        // --- DOM ---
         const UI = {
             video: document.getElementById('webcam'),
             canvas: document.getElementById('canvas'),
@@ -207,80 +196,38 @@
             confSlider: document.getElementById('conf-slider'),
             skipSlider: document.getElementById('skip-slider')
         };
-
         const ctx = UI.canvas.getContext('2d', { alpha: false }); 
 
-        // --- Configuración y Estado ---
+        // --- Estado ---
         let state = {
-            model: null,
-            isPlaying: false,
-            isPaused: false,
-            wasPlaying: false,
-            lineX: null,
-            lineY: null,
-            isHorizontal: false,
-            isInverted: false,
-            entradas: 0,
-            salidas: 0,
-            frameCount: 0,
-            skipFrames: 0, 
-            confidence: 0.5,
-            loopId: null,
-            videoW: 0,
-            videoH: 0
+            model: null, isPlaying: false, isPaused: false, wasPlaying: false,
+            lineX: null, lineY: null, isHorizontal: false, isInverted: false,
+            entradas: 0, salidas: 0, frameCount: 0, skipFrames: 0, confidence: 0.5,
+            loopId: null, videoW: 0, videoH: 0
         };
 
-        // Variables de Tracking
-        const tracking = {
-            items: new Map(),
-            nextId: 0,
-            maxDist: 100,
-            maxMissed: 10,
-            cooldown: 1000
-        };
+        const tracking = { items: new Map(), nextId: 0, maxDist: 100, maxMissed: 10, cooldown: 1000 };
 
-        // --- Inicialización ---
+        // --- Init ---
         async function init() {
-            requestWakeLock(); // <--- Bloquear Pantalla al iniciar
-
+            requestWakeLock();
             try {
                 state.model = await cocoSsd.load();
-                console.log("Modelo Cargado");
-                
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
-                });
-                
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } });
                 UI.video.srcObject = stream;
-                
                 UI.video.onloadedmetadata = () => {
-                    state.videoW = UI.video.videoWidth;
-                    state.videoH = UI.video.videoHeight;
-                    
-                    UI.canvas.width = state.videoW;
-                    UI.canvas.height = state.videoH;
-                    
-                    UI.video.play();
-                    state.isPlaying = true;
-                    UI.loading.style.display = 'none';
-                    UI.pause.disabled = false;
-                    
-                    calcLine();
-                    detectLoop();
-                    UI.status.textContent = "Detectando...";
+                    state.videoW = UI.video.videoWidth; state.videoH = UI.video.videoHeight;
+                    UI.canvas.width = state.videoW; UI.canvas.height = state.videoH;
+                    UI.video.play(); state.isPlaying = true;
+                    UI.loading.style.display = 'none'; UI.pause.disabled = false;
+                    calcLine(); detectLoop(); UI.status.textContent = "Detectando...";
                 };
-
-            } catch (err) {
-                console.error(err);
-                UI.loading.innerHTML = `<div class="text-danger fw-bold">Error: ${err.message}</div>`;
-            }
+            } catch (err) { UI.loading.innerHTML = `<div class="text-danger fw-bold">Error: ${err.message}</div>`; }
         }
 
-        // --- Lógica Principal (Loop) ---
+        // --- Loop ---
         async function detectLoop() {
             if (!state.isPlaying || state.isPaused) return;
-
             state.frameCount++;
             if (state.frameCount % (state.skipFrames + 1) === 0) {
                 if (state.model) {
@@ -288,228 +235,108 @@
                     processTracking(predictions);
                 }
             }
-
             draw();
             state.loopId = requestAnimationFrame(detectLoop);
         }
 
-        // --- Dibujado Eficiente ---
+        // --- Draw (CORREGIDO) ---
         function draw() {
-            ctx.save();
-            ctx.scale(-1, 1);
-            ctx.drawImage(UI.video, -state.videoW, 0, state.videoW, state.videoH);
-            ctx.restore();
+            ctx.save(); ctx.scale(-1, 1); ctx.drawImage(UI.video, -state.videoW, 0, state.videoW, state.videoH); ctx.restore();
 
-            // Dibujar Línea
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-            ctx.lineWidth = 3;
-            
-            if (state.isHorizontal && state.lineY !== null) {
-                ctx.moveTo(0, state.lineY);
-                ctx.lineTo(state.videoW, state.lineY);
-            } else if (!state.isHorizontal && state.lineX !== null) {
-                ctx.moveTo(state.lineX, 0);
-                ctx.lineTo(state.lineX, state.videoH);
-            }
+            // Línea
+            ctx.beginPath(); ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)'; ctx.lineWidth = 3;
+            if (state.isHorizontal && state.lineY !== null) { ctx.moveTo(0, state.lineY); ctx.lineTo(state.videoW, state.lineY); }
+            else if (!state.isHorizontal && state.lineX !== null) { ctx.moveTo(state.lineX, 0); ctx.lineTo(state.lineX, state.videoH); }
             ctx.stroke();
 
-            // Dibujar Bounding Boxes y IDs
+            // Tracks
             document.querySelectorAll('.track-id').forEach(el => el.remove());
-
             tracking.items.forEach(track => {
                 if (track.missed < 2) {
                     const [x, y, w, h] = track.bbox;
+                    
+                    // Cálculo de la posición Visual (Espejo)
                     const visualX = state.videoW - x - w;
 
-                    ctx.strokeStyle = '#0d6efd';
-                    ctx.lineWidth = 2;
+                    // Dibujo del cuadro VERDE en Canvas
+                    ctx.strokeStyle = '#0d6efd'; ctx.lineWidth = 2;
                     ctx.strokeRect(visualX, y, w, h);
 
-                    // Etiqueta DOM (Corregida con right + %)
+                    // Etiqueta DOM anclada EXACTAMENTE a visualX (Left %)
                     const el = document.createElement('div');
                     el.className = 'track-id';
                     el.textContent = `ID: ${track.id}`;
-                    
-                    // CORRECCIÓN APLICADA: Usar RIGHT + Coordenada X Original + Porcentaje
-                    el.style.right = `${(x / state.videoW) * 100}%`; 
+                    el.style.left = `${(visualX / state.videoW) * 100}%`; 
                     el.style.top = `${(y / state.videoH) * 100}%`;
-                    
                     UI.container.appendChild(el);
                 }
             });
         }
 
-        // --- Tracking y Conteo ---
+        // --- Tracking Logic ---
         function processTracking(predictions) {
-            const people = predictions
-                .filter(p => p.class === 'person')
-                .map(p => ({
-                    bbox: p.bbox,
-                    cx: p.bbox[0] + p.bbox[2]/2,
-                    cy: p.bbox[1] + p.bbox[3]/2
-                }));
+            const people = predictions.filter(p => p.class === 'person').map(p => ({ bbox: p.bbox, cx: p.bbox[0] + p.bbox[2]/2, cy: p.bbox[1] + p.bbox[3]/2 }));
+            const matched = new Set(); const now = Date.now();
 
-            const matched = new Set();
-            const now = Date.now();
-
-            tracking.items.forEach((track, id) => {
-                let minDist = tracking.maxDist;
-                let matchIdx = -1;
-
-                people.forEach((p, idx) => {
-                    if (matched.has(idx)) return;
-                    const d = Math.hypot(track.cx - p.cx, track.cy - p.cy);
-                    if (d < minDist) {
-                        minDist = d;
-                        matchIdx = idx;
-                    }
-                });
+            tracking.items.forEach((track) => {
+                let minDist = tracking.maxDist; let matchIdx = -1;
+                people.forEach((p, idx) => { if (matched.has(idx)) return; const d = Math.hypot(track.cx - p.cx, track.cy - p.cy); if (d < minDist) { minDist = d; matchIdx = idx; } });
 
                 if (matchIdx !== -1) {
-                    matched.add(matchIdx);
-                    const p = people[matchIdx];
-                    
-                    const oldSide = track.side;
-                    const newSide = getSide(p.cx, p.cy);
-                    
+                    matched.add(matchIdx); const p = people[matchIdx];
+                    const oldSide = track.side; const newSide = getSide(p.cx, p.cy);
                     if (oldSide && newSide && oldSide !== newSide) {
-                        if (now - track.lastCross > tracking.cooldown) {
-                            checkCross(oldSide, newSide);
-                            track.lastCross = now;
-                        }
+                        if (now - track.lastCross > tracking.cooldown) { checkCross(oldSide, newSide); track.lastCross = now; }
                     }
-
-                    track.bbox = p.bbox;
-                    track.cx = p.cx;
-                    track.cy = p.cy;
-                    track.side = newSide;
-                    track.missed = 0;
-                } else {
-                    track.missed++;
-                }
+                    track.bbox = p.bbox; track.cx = p.cx; track.cy = p.cy; track.side = newSide; track.missed = 0;
+                } else { track.missed++; }
             });
 
-            tracking.items.forEach((t, id) => {
-                if (t.missed > tracking.maxMissed) tracking.items.delete(id);
-            });
-
-            people.forEach((p, idx) => {
-                if (!matched.has(idx)) {
-                    const newId = ++tracking.nextId;
-                    tracking.items.set(newId, {
-                        id: newId,
-                        bbox: p.bbox,
-                        cx: p.cx,
-                        cy: p.cy,
-                        side: getSide(p.cx, p.cy),
-                        missed: 0,
-                        lastCross: 0
-                    });
-                }
-            });
+            tracking.items.forEach((t, id) => { if (t.missed > tracking.maxMissed) tracking.items.delete(id); });
+            people.forEach((p, idx) => { if (!matched.has(idx)) { const newId = ++tracking.nextId; tracking.items.set(newId, { id: newId, bbox: p.bbox, cx: p.cx, cy: p.cy, side: getSide(p.cx, p.cy), missed: 0, lastCross: 0 }); } });
         }
 
         // --- Helpers ---
         function calcLine() {
-            const val = parseInt(UI.lineSlider.value);
-            UI.lineVal.textContent = `${val}%`;
-            
-            if (state.isHorizontal) {
-                state.lineY = state.videoH - (val / 100) * state.videoH;
-                state.lineX = null;
-            } else {
-                state.lineX = state.videoW - (val / 100) * state.videoW;
-                state.lineY = null;
-            }
+            const val = parseInt(UI.lineSlider.value); UI.lineVal.textContent = `${val}%`;
+            if (state.isHorizontal) { state.lineY = state.videoH - (val / 100) * state.videoH; state.lineX = null; }
+            else { state.lineX = state.videoW - (val / 100) * state.videoW; state.lineY = null; }
         }
-
         function getSide(x, y) {
-            if (state.isHorizontal) {
-                if (state.lineY === null) return null;
-                return y < state.lineY ? 'A' : 'B';
-            } else {
-                if (state.lineX === null) return null;
-                return x < state.lineX ? 'A' : 'B';
-            }
+            if (state.isHorizontal) { return state.lineY === null ? null : (y < state.lineY ? 'A' : 'B'); }
+            else { return state.lineX === null ? null : (x < state.lineX ? 'A' : 'B'); }
         }
-
         function checkCross(oldS, newS) {
-            let crossedIn = false;
-            if (oldS === 'A' && newS === 'B') crossedIn = true;
-            else if (oldS === 'B' && newS === 'A') crossedIn = false;
-            else return;
-
+            let crossedIn = (oldS === 'A' && newS === 'B');
+            if (oldS === 'B' && newS === 'A') crossedIn = false; else if (!crossedIn) return;
             if (state.isInverted) crossedIn = !crossedIn;
-
-            if (crossedIn) state.entradas++;
-            else state.salidas++;
-
-            updateStats();
+            crossedIn ? state.entradas++ : state.salidas++; updateStats();
         }
-
         function updateStats() {
-            UI.entradas.textContent = state.entradas;
-            UI.salidas.textContent = state.salidas;
-            UI.dentro.textContent = Math.max(0, state.entradas - state.salidas);
-            
-            UI.statsRow.classList.remove('flash-active');
-            void UI.statsRow.offsetWidth;
-            UI.statsRow.classList.add('flash-active');
+            UI.entradas.textContent = state.entradas; UI.salidas.textContent = state.salidas; UI.dentro.textContent = Math.max(0, state.entradas - state.salidas);
+            UI.statsRow.classList.remove('flash-active'); void UI.statsRow.offsetWidth; UI.statsRow.classList.add('flash-active');
         }
 
-        // --- Event Listeners ---
+        // --- Listeners ---
         UI.lineSlider.addEventListener('input', calcLine);
-        
-        UI.orientation.addEventListener('change', e => {
-            state.isHorizontal = e.target.checked;
-            tracking.items.clear();
-            calcLine();
-        });
-        
-        UI.invert.addEventListener('change', e => {
-            state.isInverted = e.target.checked;
-        });
-
-        UI.reset.addEventListener('click', () => {
-            state.entradas = 0;
-            state.salidas = 0;
-            tracking.items.clear();
-            updateStats();
-        });
-
+        UI.orientation.addEventListener('change', e => { state.isHorizontal = e.target.checked; tracking.items.clear(); calcLine(); });
+        UI.invert.addEventListener('change', e => state.isInverted = e.target.checked);
+        UI.reset.addEventListener('click', () => { state.entradas = 0; state.salidas = 0; tracking.items.clear(); updateStats(); });
         UI.pause.addEventListener('click', () => {
             state.isPaused = !state.isPaused;
             UI.pause.innerHTML = state.isPaused ? '<i class="bi bi-play-fill"></i> Reanudar' : '<i class="bi bi-pause-fill"></i> Pausar';
-            UI.pause.classList.toggle('btn-warning', state.isPaused);
-            UI.pause.classList.toggle('btn-secondary', !state.isPaused);
+            UI.pause.classList.toggle('btn-warning', state.isPaused); UI.pause.classList.toggle('btn-secondary', !state.isPaused);
             if (!state.isPaused) detectLoop();
         });
-
         UI.confSlider.addEventListener('input', e => state.confidence = parseFloat(e.target.value));
         UI.skipSlider.addEventListener('input', e => state.skipFrames = parseInt(e.target.value));
 
-        // Optimización Batería + Wake Lock Reset
         document.addEventListener("visibilitychange", () => {
-            if (document.hidden) {
-                state.wasPlaying = !state.isPaused;
-                state.isPaused = true;
-                // WakeLock se libera solo
-                console.log("Tab background: Paused");
-            } else {
-                requestWakeLock(); // Reactivar Pantalla
-                
-                if (state.wasPlaying) {
-                    state.isPaused = false;
-                    detectLoop();
-                    console.log("Tab active: Resumed");
-                }
-            }
+            if (document.hidden) { state.wasPlaying = !state.isPaused; state.isPaused = true; }
+            else { requestWakeLock(); if (state.wasPlaying) { state.isPaused = false; detectLoop(); } }
         });
 
-        // Arranque
         window.addEventListener('load', init);
-
     </script>
 </body>
 </html>
