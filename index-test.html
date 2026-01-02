@@ -358,11 +358,15 @@
                     el.className = 'track-id';
                     el.textContent = `ID: ${track.id}`;
                     
-                    // Ajuste de posición relativo al contenedor (Responsive)
-                    // El canvas escala, así que usamos porcentajes para el DOM overlay si fuera necesario
-                    // Pero aquí canvas-container = tamaño canvas. Pixel perfect.
-                    el.style.left = `${x}px`;
-                    el.style.top = `${y}px`;
+                    // CORRECCIÓN:
+                    // 1. Usamos 'right' en vez de 'left' para invertir la dirección (Efecto Espejo).
+                    // 2. Usamos % para que coincida con el tamaño de la pantalla del móvil.
+                    // 3. Usamos la 'x' original del tracking.
+                    el.style.right = `${(x / state.videoW) * 100}%`; 
+                    
+                    // Ajuste vertical (Top) también en porcentaje para asegurar escala
+                    el.style.top = `${(y / state.videoH) * 100}%`;
+                    
                     UI.container.appendChild(el);
                 }
             });
